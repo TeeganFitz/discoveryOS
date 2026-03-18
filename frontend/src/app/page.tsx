@@ -80,7 +80,10 @@ export default function Page() {
             {phase === "done" && "Complete"}
           </span>
         </div>
-        <div className="text-xs text-text-muted font-mono">
+        <div
+          className="text-xs text-text-muted font-mono"
+          suppressHydrationWarning
+        >
           {sessionId.slice(0, 8)}
         </div>
       </header>
