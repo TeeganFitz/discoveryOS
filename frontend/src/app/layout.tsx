@@ -5,7 +5,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// Load Google fonts — Next.js handles font optimization automatically
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -31,8 +30,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      {/* bg-zinc-950 = near-black, text-zinc-100 = light gray text */}
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
+      <body className="h-full bg-surface text-text-primary selection:bg-accent-subtle">
         {children}
       </body>
     </html>

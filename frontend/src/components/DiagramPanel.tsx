@@ -1,27 +1,23 @@
 // DiagramPanel.tsx — Displays the Excalidraw JSON output
-// For the hackathon, we show formatted JSON with a copy button.
-// The user can paste this into excalidraw.com to see the visual diagram.
-// Post-hackathon: swap this for the actual @excalidraw/excalidraw component.
+// Redesigned: cleaner header, instruction text, consistent copy button
 
 "use client";
 
 import { useState } from "react";
 
 interface DiagramPanelProps {
-  content: string; // Raw JSON string from the diagrammer agent
+  content: string;
 }
 
 export default function DiagramPanel({ content }: DiagramPanelProps) {
   const [copied, setCopied] = useState(false);
 
-  // Try to parse and pretty-print the JSON for readability
   let formatted: string;
   let isValid = true;
   try {
     const parsed = JSON.parse(content);
     formatted = JSON.stringify(parsed, null, 2);
   } catch {
-    // If the JSON is malformed, show it raw with a warning
     formatted = content;
     isValid = false;
   }
@@ -34,45 +30,51 @@ export default function DiagramPanel({ content }: DiagramPanelProps) {
 
   return (
     <div>
-      {/* Action bar */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h3 className="text-sm font-medium text-zinc-400">
-            Excalidraw Diagram
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider">
+            Diagram
           </h3>
           {!isValid && (
-            <span className="text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">
+            <p className="text-xs text-error mt-1">
               Invalid JSON — showing raw output
-            </span>
+            </p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={handleCopy}
-            className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-300
-                       hover:bg-zinc-700 transition-colors"
+            className="text-xs px-2 py-1 rounded-md text-text-muted
+                       hover:text-text-secondary hover:bg-surface-overlay
+                       transition-all duration-150"
           >
-            {copied ? "Copied!" : "Copy JSON"}
+            {copied ? "Copied" : "Copy JSON"}
           </button>
-          {/* Link to excalidraw.com — user pastes the JSON there */}
           <a
             href="https://excalidraw.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs px-3 py-1 rounded bg-zinc-800 text-zinc-300
-                       hover:bg-zinc-700 transition-colors"
+            className="text-xs px-2 py-1 rounded-md text-text-muted
+                       hover:text-text-secondary hover:bg-surface-overlay
+                       transition-all duration-150"
           >
             Open Excalidraw
           </a>
         </div>
       </div>
 
-      {/* JSON display — styled code block with horizontal scroll */}
+      {/* Instruction */}
+      <p className="text-xs text-text-muted mb-3">
+        Copy the JSON below and paste it into Excalidraw to view the diagram.
+      </p>
+
+      {/* JSON display */}
       <pre
-        className="bg-zinc-900 border border-zinc-800 rounded-lg p-4
+        className="bg-surface-raised border border-border rounded-md p-4
                       overflow-auto max-h-[600px] text-xs leading-relaxed"
       >
-        <code className="text-zinc-300">{formatted}</code>
+        <code className="text-text-secondary">{formatted}</code>
       </pre>
     </div>
   );

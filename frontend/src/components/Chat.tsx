@@ -1,24 +1,21 @@
-// Chat.tsx — The conversation interface with the orchestrator agent
+// Chat.tsx — Conversation interface with the orchestrator agent
 //
-// This is where the back-and-forth happens after the user pastes a transcript.
-// The agent reads the transcript, asks targeted follow-up questions, and
-// signals when it has enough info to generate documents.
-//
-// On mount, it automatically sends the first message with the transcript
-// so the agent can start analyzing immediately.
+// Redesigned from generic chat bubbles to a professional, clean layout:
+// - Agent messages: left-aligned plain text with a small avatar
+// - User messages: right-aligned, subtle surface background
+// - Typing indicator: three animated dots instead of "Thinking..." text
+// - Send button: icon-only arrow
 
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import GenerateButton from "./GenerateButton";
 
-// Each message in the conversation
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-// SSE event shape (same as GenerateButton)
 interface SSEEvent {
   type: "context_file" | "proposal" | "diagram" | "email" | "done";
   content?: string;
@@ -27,9 +24,7 @@ interface SSEEvent {
 interface ChatProps {
   sessionId: string;
   transcript: string;
-  // Called when the agent says it has enough info
   onReadyToGenerate: () => void;
-  // Passed through to GenerateButton
   onGenerateEvent: (event: SSEEvent) => void;
   onGenerateComplete: () => void;
 }
@@ -46,16 +41,18 @@ export default function Chat({
   const [isLoading, setIsLoading] = useState(false);
   const [readyToGenerate, setReadyToGenerate] = useState(false);
 
-  // Ref for auto-scrolling to the latest message
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasSentFirst = useRef(false);
 
-  // Auto-scroll when new messages arrive
+  // Auto-scroll to latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isLoading]);
 
-  // On mount, send the first message with the transcript to kick off the conversation
+  // Auto-send first message with transcript on mount
   useEffect(() => {
+    if (hasSentFirst.current) return;
+    hasSentFirst.current = true;
     sendMessage("Here's the transcript from the call.", true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -63,7 +60,6 @@ export default function Chat({
   async function sendMessage(text: string, isFirst = false) {
     if (!text.trim() || isLoading) return;
 
-    // Add user message to the chat immediately (optimistic update)
     const userMessage: Message = { role: "user", content: text };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -72,35 +68,33 @@ export default function Chat({
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-      // Call the /chat endpoint
       const response = await fetch(`${apiUrl}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: sessionId,
           message: text,
-          // Only send transcript on the first message
           ...(isFirst ? { transcript } : {}),
         }),
       });
 
       const data = await response.json();
 
-      // Add the agent's reply to the chat
       const agentMessage: Message = { role: "assistant", content: data.reply };
       setMessages((prev) => [...prev, agentMessage]);
 
-      // Check if the agent says it has enough info
       if (data.ready_to_generate) {
         setReadyToGenerate(true);
         onReadyToGenerate();
       }
     } catch (error) {
       console.error("Chat error:", error);
-      // Show the error in the chat so the user knows something went wrong
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Something went wrong. Try again?" },
+        {
+          role: "assistant",
+          content: "Connection failed. Is the backend running on port 8000?",
+        },
       ]);
     } finally {
       setIsLoading(false);
@@ -108,44 +102,67 @@ export default function Chat({
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Message list — scrollable */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            // User messages right-aligned, agent messages left-aligned
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <span
-              className={`inline-block max-w-[80%] px-4 py-2 rounded-lg text-sm leading-relaxed
-                ${
-                  msg.role === "user"
-                    ? "bg-blue-600 text-white" // User: blue bubble
-                    : "bg-zinc-800 text-zinc-100" // Agent: dark bubble
-                }`}
-            >
-              {msg.content}
-            </span>
-          </div>
-        ))}
+    <div className="flex flex-col h-full min-h-0">
+      {/* Message list */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+        {messages.map((msg, i) => {
+          // Check if previous message was same role (for tighter grouping)
+          const prevSameRole = i > 0 && messages[i - 1].role === msg.role;
 
-        {/* Loading indicator while waiting for agent response */}
+          return (
+            <div
+              key={i}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}
+                ${prevSameRole ? "mt-1" : "mt-4"}`}
+            >
+              {/* Agent avatar — only show on first message in a group */}
+              {msg.role === "assistant" && !prevSameRole && (
+                <div
+                  className="w-6 h-6 rounded-md bg-surface-overlay flex items-center justify-center
+                                text-[10px] font-semibold text-text-muted mr-2 mt-0.5 shrink-0"
+                >
+                  D
+                </div>
+              )}
+
+              {/* Message content */}
+              <div
+                className={`max-w-[85%] text-sm leading-relaxed
+                  ${
+                    msg.role === "user"
+                      ? "bg-surface-raised border border-border rounded-lg px-3.5 py-2 text-text-primary"
+                      : `text-text-secondary ${prevSameRole ? "ml-8" : ""}`
+                  }`}
+              >
+                {msg.content}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Typing indicator — three bouncing dots */}
         {isLoading && (
-          <div className="flex justify-start">
-            <span className="inline-block px-4 py-2 rounded-lg text-sm bg-zinc-800 text-zinc-500">
-              Thinking...
-            </span>
+          <div className="flex justify-start mt-4">
+            <div
+              className="w-6 h-6 rounded-md bg-surface-overlay flex items-center justify-center
+                            text-[10px] font-semibold text-text-muted mr-2 mt-0.5 shrink-0"
+            >
+              D
+            </div>
+            <div className="flex items-center gap-1 py-2">
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-text-muted" />
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-text-muted" />
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-text-muted" />
+            </div>
           </div>
         )}
 
-        {/* Invisible element at the bottom — scrollIntoView targets this */}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Generate button — appears when the agent says it's ready */}
+      {/* Generate button — appears when agent says it's ready */}
       {readyToGenerate && (
-        <div className="px-4 pb-2">
+        <div className="px-4 pb-3">
           <GenerateButton
             sessionId={sessionId}
             onEvent={onGenerateEvent}
@@ -154,30 +171,38 @@ export default function Chat({
         </div>
       )}
 
-      {/* Input area — text field + send button */}
-      <div className="flex gap-2 p-4 border-t border-zinc-800">
+      {/* Input area */}
+      <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          // Send on Enter key press
           onKeyDown={(e) =>
             e.key === "Enter" && !e.shiftKey && sendMessage(input)
           }
-          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg
-                     px-4 py-2 text-sm text-zinc-200 placeholder-zinc-600
-                     focus:outline-none focus:border-zinc-600"
-          placeholder="Reply to agent..."
+          className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted
+                     py-2 focus:outline-none"
+          placeholder="Type a response..."
           disabled={isLoading}
         />
+        {/* Send button — arrow icon */}
         <button
           onClick={() => sendMessage(input)}
           disabled={isLoading || !input.trim()}
-          className="px-4 py-2 rounded-lg text-sm font-medium
-                     bg-blue-600 text-white hover:bg-blue-500
-                     disabled:bg-zinc-800 disabled:text-zinc-600
-                     disabled:cursor-not-allowed transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-md
+                     text-text-muted hover:text-text-primary hover:bg-surface-overlay
+                     disabled:opacity-30 disabled:hover:bg-transparent
+                     transition-all duration-150"
         >
-          Send
+          {/* Simple arrow-up SVG */}
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M8 3L8 13M8 3L4 7M8 3L12 7"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       </div>
     </div>

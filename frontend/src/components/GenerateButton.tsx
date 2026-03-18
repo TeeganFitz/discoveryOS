@@ -1,14 +1,10 @@
 // GenerateButton.tsx — Fires all four subagents and reads the SSE stream
-//
-// Why not use EventSource? EventSource only supports GET requests.
-// Our /generate endpoint is POST, so we use fetch() + getReader() to
-// manually read the Server-Sent Events stream.
+// Redesigned: accent color (not green), tactile press, progress text
 
 "use client";
 
 import { useState } from "react";
 
-// Each SSE event from the backend looks like this
 interface SSEEvent {
   type: "context_file" | "proposal" | "diagram" | "email" | "done";
   content?: string;
@@ -16,9 +12,7 @@ interface SSEEvent {
 
 interface GenerateButtonProps {
   sessionId: string;
-  // Called for each SSE event — page.tsx uses this to update the output tabs
   onEvent: (event: SSEEvent) => void;
-  // Called when all four agents are done
   onComplete: () => void;
 }
 
@@ -28,6 +22,7 @@ export default function GenerateButton({
   onComplete,
 }: GenerateButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isDone, setIsDone] = useState(false);
 
   async function handleGenerate() {
     setIsGenerating(true);
@@ -35,7 +30,6 @@ export default function GenerateButton({
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-      // POST to /generate — this returns an SSE stream
       const response = await fetch(`${apiUrl}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -46,30 +40,25 @@ export default function GenerateButton({
         throw new Error("Generate request failed");
       }
 
-      // Read the stream manually using the Streams API
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = ""; // Holds incomplete chunks between reads
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        // Decode the binary chunk into text and add to buffer
         buffer += decoder.decode(value, { stream: true });
-
-        // SSE events are separated by double newlines (\n\n)
         const events = buffer.split("\n\n");
-        // The last item might be incomplete — keep it in the buffer
         buffer = events.pop() || "";
 
         for (const event of events) {
-          // Each SSE line starts with "data: " followed by JSON
           if (event.startsWith("data: ")) {
-            const json = event.slice(6); // Remove "data: " prefix
+            const json = event.slice(6);
             const parsed: SSEEvent = JSON.parse(json);
 
             if (parsed.type === "done") {
+              setIsDone(true);
               onComplete();
             } else {
               onEvent(parsed);
@@ -87,19 +76,23 @@ export default function GenerateButton({
   return (
     <button
       onClick={handleGenerate}
-      disabled={isGenerating}
-      className="w-full py-3 rounded-lg text-sm font-medium transition-colors
-                 bg-green-600 text-white hover:bg-green-500
-                 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed"
+      disabled={isGenerating || isDone}
+      className={`w-full py-2.5 rounded-md text-sm font-medium transition-all duration-150
+        ${
+          isDone
+            ? "bg-surface-raised text-text-muted border border-border cursor-default"
+            : "bg-accent text-white hover:bg-accent-hover active:scale-[0.98] disabled:opacity-60"
+        }`}
     >
-      {isGenerating ? (
+      {isDone ? (
+        "Documents generated"
+      ) : isGenerating ? (
         <span className="flex items-center justify-center gap-2">
-          {/* Simple spinner using a spinning border */}
-          <span className="w-4 h-4 border-2 border-zinc-500 border-t-white rounded-full animate-spin" />
-          Generating... this takes 15-30s
+          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          Running 4 agents...
         </span>
       ) : (
-        "Generate All Documents"
+        "Generate all documents"
       )}
     </button>
   );
