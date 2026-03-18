@@ -4,6 +4,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 
 interface DiagramPanelProps {
   content: string;
@@ -25,6 +26,7 @@ export default function DiagramPanel({ content }: DiagramPanelProps) {
   async function handleCopy() {
     await navigator.clipboard.writeText(formatted);
     setCopied(true);
+    toast.success("JSON copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
   }
 

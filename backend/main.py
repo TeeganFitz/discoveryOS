@@ -109,7 +109,27 @@ def run_conversation(
     )
 
     # Parse the JSON response
-    result = json.loads(response.content[0].text)
+    # Claude sometimes wraps JSON in markdown code blocks like ```json ... ```
+    # so we need to strip those before parsing
+    raw_text = response.content[0].text.strip()
+
+    # Remove markdown code block wrapper if present
+    if raw_text.startswith("```"):
+        # Strip opening ```json or ``` and closing ```
+        lines = raw_text.split("\n")
+        # Remove first line (```json) and last line (```)
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        raw_text = "\n".join(lines).strip()
+
+    # If still empty or not JSON, build a fallback response
+    if not raw_text or raw_text[0] not in "{[":
+        result = {
+            "reply": raw_text or "I'm having trouble processing that. Could you try again?",
+            "extracted": {},
+            "ready_to_generate": False,
+        }
+    else:
+        result = json.loads(raw_text)
 
     # Update context with any newly extracted fields
     for key, value in result.get("extracted", {}).items():
@@ -368,7 +388,7 @@ async def chat(body: ChatRequest):
 
     # Update chat history for multi-turn conversation
     session["history"].append({"role": "user", "content": body.message})
-    session["history"].append({"role": "assistant", "content": json.dumps(result)})
+    session["history"].append({"role": "assistant", "content": result["reply"]})
 
     return {
         "reply": result["reply"],
@@ -378,9 +398,10 @@ async def chat(body: ChatRequest):
 
 @app.post("/generate")
 async def generate(body: GenerateRequest):
-    """Fire all four subagents and stream results back as SSE (Server-Sent Events).
-    SSE is a simple protocol where the server sends events to the client
-    over a long-lived HTTP connection."""
+    """Fire all four subagents and stream results as each one finishes.
+    Instead of waiting for all 4 to complete (old behavior), we now
+    stream each result the moment its agent is done. This means the user
+    sees outputs appear one-by-one in real time."""
 
     session = sessions.get(body.session_id)
     if not session:
@@ -389,14 +410,35 @@ async def generate(body: GenerateRequest):
     context = session["context"]
 
     async def stream():
-        # Run all four agents in parallel
-        await run_all_agents(context)
+        loop = asyncio.get_event_loop()
 
-        # Stream each result as an SSE event
-        yield f"data: {json.dumps({'type': 'context_file', 'content': context.context_file})}\n\n"
-        yield f"data: {json.dumps({'type': 'proposal', 'content': context.proposal})}\n\n"
-        yield f"data: {json.dumps({'type': 'diagram', 'content': context.diagram_json})}\n\n"
-        yield f"data: {json.dumps({'type': 'email', 'content': context.followup_email})}\n\n"
+        # Map each agent function to its SSE event type and context field
+        agents = [
+            ("context_file", "context_file", build_context_file),
+            ("proposal", "proposal", build_proposal),
+            ("diagram", "diagram_json", build_diagram),
+            ("email", "followup_email", build_email),
+        ]
+
+        # Tell the frontend which agents are starting
+        yield f"data: {json.dumps({'type': 'started', 'agents': [a[0] for a in agents]})}\n\n"
+
+        # Create async tasks for all agents (they run in parallel)
+        async def run_agent(event_type, context_field, agent_fn):
+            result = await loop.run_in_executor(None, agent_fn, context)
+            setattr(context, context_field, result)
+            return event_type, result
+
+        # Fire all four and yield each result as it completes
+        tasks = [
+            asyncio.create_task(run_agent(et, cf, fn))
+            for et, cf, fn in agents
+        ]
+
+        for coro in asyncio.as_completed(tasks):
+            event_type, result = await coro
+            yield f"data: {json.dumps({'type': event_type, 'content': result})}\n\n"
+
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream")

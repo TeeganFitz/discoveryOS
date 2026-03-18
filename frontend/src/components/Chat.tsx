@@ -9,6 +9,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import GenerateButton from "./GenerateButton";
 
 interface Message {
@@ -89,6 +90,7 @@ export default function Chat({
       }
     } catch (error) {
       console.error("Chat error:", error);
+      toast.error("Connection failed — is the backend running?");
       setMessages((prev) => [
         ...prev,
         {

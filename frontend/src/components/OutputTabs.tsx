@@ -4,7 +4,7 @@
 "use client";
 
 import { useState } from "react";
-import MarkdownPanel from "./MarkdownPanel";
+import EditablePanel from "./EditablePanel";
 import DiagramPanel from "./DiagramPanel";
 
 interface Outputs {
@@ -84,7 +84,8 @@ export default function OutputTabs({ outputs, generating }: OutputTabsProps) {
             <EmptyState />
           )
         ) : outputs[activeTab as keyof Outputs] ? (
-          <MarkdownPanel
+          <EditablePanel
+            key={activeTab}
             content={outputs[activeTab as keyof Outputs]!}
             label={TABS.find((t) => t.key === activeTab)?.label}
           />

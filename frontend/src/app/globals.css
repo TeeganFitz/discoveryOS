@@ -101,3 +101,19 @@ body {
 .typing-dot:nth-child(3) {
   animation-delay: 0.3s;
 }
+
+/* ── Tiptap editor ── */
+.tiptap {
+  caret-color: var(--color-accent);
+}
+.tiptap:focus {
+  outline: none;
+}
+/* Placeholder when editor is empty */
+.tiptap p.is-editor-empty:first-child::before {
+  content: "Start editing...";
+  color: var(--color-text-muted);
+  float: left;
+  pointer-events: none;
+  height: 0;
+}
